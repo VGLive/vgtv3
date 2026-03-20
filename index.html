@@ -186,11 +186,9 @@
             const url = c.channel_url || "";
             const kid = (c.keyId && c.keyId !== "Null") ? c.keyId : "";
             const key = (c.key && c.key !== "Null") ? c.key : "";
-            const cookie = c.cookie || "";
 
             const safeKid = JSON.stringify(kid);
             const safeKey = JSON.stringify(key);
-            const safeCookie = JSON.stringify(cookie);
             const safeUrl = JSON.stringify(url);
 
             const playerCode = `<!DOCTYPE html>
@@ -233,41 +231,21 @@
 
         const kid = ${safeKid};
         const key = ${safeKey};
-        let cookieHeader = ${safeCookie};
         let streamUrl = ${safeUrl};
+        let cookieHeader = "";
+
+        // UPDATE: Fetch live cookie directly from the new API
+        try {
+            const res = await fetch('https://allrounderid2.pages.dev/api/cookie.json');
+            const data = await res.json();
+            cookieHeader = data.cookie || "";
+        } catch (e) {
+            console.error("Failed to fetch primary cookie", e);
+        }
 
         let drmConfig = { clearKeys: {} };
         if(kid && key) {
             drmConfig.clearKeys[kid] = key;
-        }
-
-        try {
-            const response = await fetch('https://allrounderid.pages.dev/api/jiotv.json');
-            const data = await response.json();
-            const channel = data.find(ch => ch.channel_name === "DD Sports");
-            if (channel && channel.cookie) { cookieHeader = channel.cookie; }
-        } catch (e) {}
-
-        let backupCookie = null;
-        let usingBackupCookie = false;
-
-        async function fetchBackupCookie() {
-            if (backupCookie) return backupCookie;
-            const res = await fetch('https://allrounderid2.pages.dev/api/cookie.json');
-            const data = await res.json();
-            backupCookie = data.cookie;
-            return backupCookie;
-        }
-
-        async function switchToBackupCookie() {
-            if (usingBackupCookie) return;
-            usingBackupCookie = true;
-            cookieHeader = await fetchBackupCookie();
-            try {
-                await player.unload();
-                await player.load(streamUrl);
-                video.play();
-            } catch (e) {}
         }
 
         player.configure({ drm: drmConfig });
@@ -278,16 +256,16 @@
             if(cookieHeader) request.headers['Cookie'] = cookieHeader;
 
             if ((type === shaka.net.NetworkingEngine.RequestType.MANIFEST || type === shaka.net.NetworkingEngine.RequestType.SEGMENT) && request.uris[0] && !request.uris[0].includes('__hdnea=')) {
+                // If the cookie string starts with __hdnea__=, remove it before appending
+                let urlCookie = cookieHeader.startsWith('__hdnea__=') ? cookieHeader.substring(10) : cookieHeader;
                 const sep = request.uris[0].includes('?') ? '&' : '?';
-                request.uris[0] += sep + cookieHeader;
+                request.uris[0] += sep + "__hdnea__=" + urlCookie;
             }
         });
 
-        player.addEventListener('error', async (event) => {
-            const err = event.detail;
-            if (!usingBackupCookie && (err.code === 401 || err.code === 403 || err.code === shaka.util.Error.Code.BAD_HTTP_STATUS || err.code === shaka.util.Error.Code.MANIFEST_UNAVAILABLE)) {
-                await switchToBackupCookie();
-            }
+        // Simplified error listener since we are already fetching the master cookie
+        player.addEventListener('error', (event) => {
+             console.error('Error code', event.detail.code, 'object', event.detail);
         });
 
         try {
