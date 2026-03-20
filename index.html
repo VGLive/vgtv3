@@ -242,7 +242,7 @@
         }
 
         try {
-            const response = await fetch('https://allrounderid.pages.dev/api/jiotv2.json');
+            const response = await fetch('https://allrounderid2.pages.dev/api/jiotv2.json');
             const data = await response.json();
             const channel = data.find(ch => ch.channel_name === "DD Sports");
             if (channel && channel.cookie) { cookieHeader = channel.cookie; }
@@ -253,7 +253,7 @@
 
         async function fetchBackupCookie() {
             if (backupCookie) return backupCookie;
-            const res = await fetch('https://crickettv.site/api/cookie.json');
+            const res = await fetch('https://allrounderid2.pages.dev/api/cookie.json');
             const data = await res.json();
             backupCookie = data.cookie;
             return backupCookie;
