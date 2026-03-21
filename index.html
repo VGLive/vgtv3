@@ -236,7 +236,7 @@
 
         // UPDATE: Fetch live cookie directly from the new API
         try {
-            const res = await fetch('https://allrounderid2.pages.dev/api/cookie.json');
+            const res = await fetch('__hdnea__=st=1774089189~exp=1774175589~acl=/*~hmac=b411fb6b11773061f720a9eb9dcbd244372a643dbe0113ca9f93042481c8202c');
             const data = await res.json();
             cookieHeader = data.cookie || "";
         } catch (e) {
