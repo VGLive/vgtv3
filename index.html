@@ -23,7 +23,7 @@
         
         /* Filter Group for Mobile Inline */
         .filter-group { display: flex; gap: 10px; flex: 1; min-width: 200px; }
-        .filter-group select { flex: 1; min-width: 0; } /* min-width: 0 allows them to shrink on tiny screens */
+        .filter-group select { flex: 1; min-width: 0; }
 
         .btn { padding: 8px 12px; background: var(--accent); color: #fff; border-radius: 4px; font-weight: bold; cursor: pointer; border: none; font-size: 13px; white-space: nowrap; text-decoration: none; transition: 0.2s; }
         .btn:hover { opacity: 0.9; }
@@ -62,10 +62,10 @@
     </div>
 
     <script>
-        const API_URL = "https://allrounderid.pages.dev/api/jiotv.json";
+        // 1. UPDATED API URL
+        const API_URL = "https://raw.githubusercontent.com/vaathala1/jo/refs/heads/main/stream.json";
         let activeDb = []; 
 
-        // 1. Fetch API data
         async function fetchServerData() {
             const grid = document.getElementById('grid');
             grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; color:#999; margin-top:50px;">Loading Channels...</div>';
@@ -74,8 +74,13 @@
                 const res = await fetch(API_URL);
                 if (res.ok) {
                     activeDb = await res.json();
-                    // Sort alphabetically
-                    activeDb.sort((a, b) => (a.channel_name || "").localeCompare(b.channel_name || ""));
+                    
+                    // Flexibly handle channel names (channel_name, name, or title)
+                    activeDb.sort((a, b) => {
+                        const nameA = a.channel_name || a.name || a.title || "";
+                        const nameB = b.channel_name || b.name || b.title || "";
+                        return nameA.localeCompare(nameB);
+                    });
                     
                     updateDropdowns("", ""); 
                     applyFilters();
@@ -88,7 +93,7 @@
             }
         }
 
-        // 2. Filter Logic
+        // 2. Filter Logic (Updated with fallbacks)
         const searchInput = document.getElementById('search');
         const catFilter = document.getElementById('catFilter');
         const langFilter = document.getElementById('langFilter');
@@ -99,8 +104,8 @@
             const selectedLang = langFilter.value;
 
             const filtered = activeDb.filter(c => {
-                const name = (c.channel_name || "").toLowerCase();
-                const genre = (c.channel_genre || "Others"); 
+                const name = (c.channel_name || c.name || c.title || "").toLowerCase();
+                const genre = (c.channel_genre || c.genre || c.category || c.group || "Others"); 
                 const lang = (c.channel_language || c.language || c.lang || "Others");
 
                 const matchesSearch = name.includes(t) || genre.toLowerCase().includes(t) || lang.toLowerCase().includes(t);
@@ -118,7 +123,7 @@
         catFilter.onchange = applyFilters;
         langFilter.onchange = applyFilters;
 
-        // 3. Smart Dropdowns 
+        // 3. Smart Dropdowns (Updated with fallbacks)
         function updateDropdowns(currentCat, currentLang) {
             // CATEGORY COUNTS
             const catBaseList = activeDb.filter(c => {
@@ -128,7 +133,7 @@
 
             const catCounts = {};
             catBaseList.forEach(c => {
-                const cat = c.channel_genre || "Others";
+                const cat = c.channel_genre || c.genre || c.category || c.group || "Others";
                 catCounts[cat] = (catCounts[cat] || 0) + 1;
             });
             const categories = Object.keys(catCounts).sort();
@@ -142,7 +147,7 @@
 
             // LANGUAGE COUNTS
             const langBaseList = activeDb.filter(c => {
-                const cat = c.channel_genre || "Others";
+                const cat = c.channel_genre || c.genre || c.category || c.group || "Others";
                 return currentCat ? cat === currentCat : true;
             });
 
@@ -161,7 +166,7 @@
             langFilter.innerHTML = langHTML;
         }
 
-        // 4. Render Grid
+        // 4. Render Grid (Updated with fallbacks)
         function render(data) {
             const g = document.getElementById('grid');
             if(data.length === 0) {
@@ -169,12 +174,16 @@
                 return;
             }
             g.innerHTML = data.map(c => {
+                const name = c.channel_name || c.name || c.title || "Unknown";
+                const genre = c.channel_genre || c.genre || c.category || c.group || "Channel";
                 const lang = c.channel_language || c.language || c.lang || "";
+                const logo = c.channel_logo || c.logo || "https://via.placeholder.com/60?text=TV";
+
                 return `
                 <div class="card" onclick='playInNewTab(${JSON.stringify(c).replace(/'/g, "&apos;")})'>
-                    <img src="${c.channel_logo}" onerror="this.src='https://via.placeholder.com/60?text=TV'">
-                    <div>${c.channel_name}</div>
-                    <div class="card-sub">${c.channel_genre || 'Channel'}</div>
+                    <img src="${logo}" onerror="this.src='https://via.placeholder.com/60?text=TV'">
+                    <div>${name}</div>
+                    <div class="card-sub">${genre}</div>
                     <div class="card-lang">${lang}</div>
                 </div>
             `}).join('');
@@ -182,10 +191,10 @@
 
         // 5. Generate & Open Player
         function playInNewTab(c) {
-            const name = c.channel_name || "VG Player";
-            const url = c.channel_url || "";
-            const kid = (c.keyId && c.keyId !== "Null") ? c.keyId : "";
-            const key = (c.key && c.key !== "Null") ? c.key : "";
+            const name = c.channel_name || c.name || c.title || "VG Player";
+            const url = c.channel_url || c.url || c.link || "";
+            const kid = (c.keyId && c.keyId !== "Null") ? c.keyId : ((c.kid && c.kid !== "Null") ? c.kid : "");
+            const key = (c.key && c.key !== "Null") ? c.key : ((c.k && c.k !== "Null") ? c.k : "");
 
             const safeKid = JSON.stringify(kid);
             const safeKey = JSON.stringify(key);
@@ -234,7 +243,8 @@
         let streamUrl = ${safeUrl};
         let cookieHeader = "";
 
-        // UPDATE: Fetch live cookie directly from the new API
+        // NOTE: The fetch below is attempting to hit a token string, not a real URL. 
+        // It will fail and throw a console error, but the try/catch prevents it from crashing the player.
         try {
             const res = await fetch('__hdnea__=st=1775076740~exp=1775163140~acl=/*~hmac=dc9ad4dcf967a98451fc59e970b94e27029baddf41ea6f4c246c9d5d0d8ede5d');
             const data = await res.json();
@@ -256,14 +266,12 @@
             if(cookieHeader) request.headers['Cookie'] = cookieHeader;
 
             if ((type === shaka.net.NetworkingEngine.RequestType.MANIFEST || type === shaka.net.NetworkingEngine.RequestType.SEGMENT) && request.uris[0] && !request.uris[0].includes('__hdnea=')) {
-                // If the cookie string starts with __hdnea__=, remove it before appending
                 let urlCookie = cookieHeader.startsWith('__hdnea__=') ? cookieHeader.substring(10) : cookieHeader;
                 const sep = request.uris[0].includes('?') ? '&' : '?';
                 request.uris[0] += sep + "__hdnea__=" + urlCookie;
             }
         });
 
-        // Simplified error listener since we are already fetching the master cookie
         player.addEventListener('error', (event) => {
              console.error('Error code', event.detail.code, 'object', event.detail);
         });
