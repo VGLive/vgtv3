@@ -21,13 +21,10 @@
         select { cursor: pointer; }
         select:focus, input:focus { border-color: var(--accent); }
         
-        /* Filter Group for Mobile Inline */
+        /* Filter Group */
         .filter-group { display: flex; gap: 10px; flex: 1; min-width: 200px; }
         .filter-group select { flex: 1; min-width: 0; }
 
-        .btn { padding: 8px 12px; background: var(--accent); color: #fff; border-radius: 4px; font-weight: bold; cursor: pointer; border: none; font-size: 13px; white-space: nowrap; text-decoration: none; transition: 0.2s; }
-        .btn:hover { opacity: 0.9; }
-        
         /* Grid */
         .grid { flex: 1; overflow-y: auto; padding: 20px; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 15px; }
         .card { background: var(--card); padding: 10px; border-radius: 8px; text-align: center; cursor: pointer; border: 1px solid #333; transition: 0.2s; }
@@ -42,16 +39,10 @@
 
     <div class="nav">
         <img src="https://raw.githubusercontent.com/VGLiveTV/vgtv3/refs/heads/main/logo.png" alt="VG TV Logo" class="nav-logo">
-        
         <input type="text" id="search" placeholder="Search Channel...">
-        
         <div class="filter-group">
-            <select id="catFilter">
-                <option value="">All Categories</option>
-            </select>
-            <select id="langFilter">
-                <option value="">All Languages</option>
-            </select>
+            <select id="catFilter"><option value="">All Categories</option></select>
+            <select id="langFilter"><option value="">All Languages</option></select>
         </div>
     </div>
 
@@ -62,38 +53,59 @@
     </div>
 
     <script>
-        // 1. UPDATED API URL
         const API_URL = "https://raw.githubusercontent.com/vaathala1/jo/refs/heads/main/stream.json";
         let activeDb = []; 
 
         async function fetchServerData() {
             const grid = document.getElementById('grid');
-            grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; color:#999; margin-top:50px;">Loading Channels...</div>';
+            grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; color:#999; margin-top:50px;">Loading Channels from GitHub...</div>';
             
             try {
                 const res = await fetch(API_URL);
-                if (res.ok) {
-                    activeDb = await res.json();
-                    
-                    // Flexibly handle channel names (channel_name, name, or title)
-                    activeDb.sort((a, b) => {
-                        const nameA = a.channel_name || a.name || a.title || "";
-                        const nameB = b.channel_name || b.name || b.title || "";
-                        return nameA.localeCompare(nameB);
-                    });
-                    
-                    updateDropdowns("", ""); 
-                    applyFilters();
+                if (!res.ok) throw new Error("Server returned " + res.status);
+                
+                let data = await res.json();
+                
+                // --- AUTO-DETECT JSON STRUCTURE ---
+                // If the JSON is wrapped in an object like { "channels": [...] }, find the array
+                if (!Array.isArray(data)) {
+                    if (data.channels && Array.isArray(data.channels)) activeDb = data.channels;
+                    else if (data.data && Array.isArray(data.data)) activeDb = data.data;
+                    else if (data.result && Array.isArray(data.result)) activeDb = data.result;
+                    else {
+                        // Dynamically look for any property that contains an Array
+                        const arrayKey = Object.keys(data).find(key => Array.isArray(data[key]));
+                        if (arrayKey) {
+                            activeDb = data[arrayKey];
+                        } else {
+                            throw new Error("Could not find a channel array inside the JSON object.");
+                        }
+                    }
                 } else {
-                    throw new Error("Server response not OK");
+                    activeDb = data; // It was a normal array all along
                 }
+
+                // Sort alphabetically
+                activeDb.sort((a, b) => {
+                    const nameA = a.channel_name || a.name || a.title || "";
+                    const nameB = b.channel_name || b.name || b.title || "";
+                    return nameA.localeCompare(nameB);
+                });
+                
+                updateDropdowns("", ""); 
+                applyFilters();
+
             } catch (err) {
-                grid.innerHTML = `<div style="grid-column:1/-1; text-align:center; color:#ef4444; margin-top:50px;">Failed to Load Channels.<br>Check Internet Connection.</div>`;
+                // Now outputs the EXACT reason it failed on your screen
+                grid.innerHTML = `<div style="grid-column:1/-1; text-align:center; color:#ef4444; margin-top:50px; line-height: 1.6;">
+                    <b>Failed to Load Channels</b><br>
+                    <span style="color:#ff8888">${err.message}</span><br><br>
+                    If error says "Failed to fetch" or "NetworkError", your GitHub repo is set to PRIVATE. Change it to PUBLIC.
+                </div>`;
                 console.error(err);
             }
         }
 
-        // 2. Filter Logic (Updated with fallbacks)
         const searchInput = document.getElementById('search');
         const catFilter = document.getElementById('catFilter');
         const langFilter = document.getElementById('langFilter');
@@ -123,9 +135,7 @@
         catFilter.onchange = applyFilters;
         langFilter.onchange = applyFilters;
 
-        // 3. Smart Dropdowns (Updated with fallbacks)
         function updateDropdowns(currentCat, currentLang) {
-            // CATEGORY COUNTS
             const catBaseList = activeDb.filter(c => {
                 const lang = (c.channel_language || c.language || c.lang || "Others");
                 return currentLang ? lang === currentLang : true; 
@@ -136,16 +146,14 @@
                 const cat = c.channel_genre || c.genre || c.category || c.group || "Others";
                 catCounts[cat] = (catCounts[cat] || 0) + 1;
             });
-            const categories = Object.keys(catCounts).sort();
             
             let catHTML = `<option value="">All Categories (${catBaseList.length})</option>`;
-            categories.forEach(cat => {
+            Object.keys(catCounts).sort().forEach(cat => {
                  const isSelected = cat === currentCat ? 'selected' : '';
                  catHTML += `<option value="${cat}" ${isSelected}>${cat} (${catCounts[cat]})</option>`;
             });
             catFilter.innerHTML = catHTML;
 
-            // LANGUAGE COUNTS
             const langBaseList = activeDb.filter(c => {
                 const cat = c.channel_genre || c.genre || c.category || c.group || "Others";
                 return currentCat ? cat === currentCat : true;
@@ -156,17 +164,15 @@
                 const lang = (c.channel_language || c.language || c.lang || "Others");
                 langCounts[lang] = (langCounts[lang] || 0) + 1;
             });
-            const languages = Object.keys(langCounts).sort();
 
             let langHTML = `<option value="">All Languages (${langBaseList.length})</option>`;
-            languages.forEach(lang => {
+            Object.keys(langCounts).sort().forEach(lang => {
                 const isSelected = lang === currentLang ? 'selected' : '';
                 langHTML += `<option value="${lang}" ${isSelected}>${lang} (${langCounts[lang]})</option>`;
             });
             langFilter.innerHTML = langHTML;
         }
 
-        // 4. Render Grid (Updated with fallbacks)
         function render(data) {
             const g = document.getElementById('grid');
             if(data.length === 0) {
@@ -189,12 +195,19 @@
             `}).join('');
         }
 
-        // 5. Generate & Open Player
         function playInNewTab(c) {
             const name = c.channel_name || c.name || c.title || "VG Player";
             const url = c.channel_url || c.url || c.link || "";
-            const kid = (c.keyId && c.keyId !== "Null") ? c.keyId : ((c.kid && c.kid !== "Null") ? c.kid : "");
-            const key = (c.key && c.key !== "Null") ? c.key : ((c.k && c.k !== "Null") ? c.k : "");
+            
+            // Extract DRM Keys robustly
+            let kid = c.keyId || c.kid || "";
+            let key = c.key || c.k || "";
+            if (c.clearkey && typeof c.clearkey === 'object') {
+                 kid = c.clearkey.keyId || c.clearkey.kid || kid;
+                 key = c.clearkey.key || c.clearkey.k || key;
+            }
+            if (kid === "Null") kid = "";
+            if (key === "Null") key = "";
 
             const safeKid = JSON.stringify(kid);
             const safeKey = JSON.stringify(key);
@@ -214,7 +227,6 @@
     html, body { background: #000; height: 100vh; width: 100vw; overflow: hidden; font-family: system-ui, -apple-system, sans-serif; }
     .shaka-video-container { position: absolute; inset: 0; width: 100%; height: 100%; }
     video { width: 100%; height: 100%; background: #000; object-fit: contain; }
-    .shaka-spinner-container { display: none !important; }
   </style>
 </head>
 <body>
@@ -224,62 +236,31 @@
   <script>
     document.addEventListener('DOMContentLoaded', async () => {
         shaka.polyfill.installAll();
-        if (!shaka.Player.isBrowserSupported()) {
-            alert('Browser not supported');
-            return;
-        }
-
         const video = document.getElementById('video');
         const player = new shaka.Player(video);
         const ui = new shaka.ui.Overlay(player, document.querySelector('.shaka-video-container'), video);
 
-        ui.configure({
-            controlPanelElements: ['play_pause','time_and_duration','mute','volume','spacer','language','captions','picture_in_picture','quality','fullscreen'],
-            seekBarColors: { base: 'white', buffered: 'red', played: 'white' }
-        });
-
         const kid = ${safeKid};
         const key = ${safeKey};
         let streamUrl = ${safeUrl};
-        let cookieHeader = "";
-
-        // NOTE: The fetch below is attempting to hit a token string, not a real URL. 
-        // It will fail and throw a console error, but the try/catch prevents it from crashing the player.
-        try {
-            const res = await fetch('__hdnea__=st=1775076740~exp=1775163140~acl=/*~hmac=dc9ad4dcf967a98451fc59e970b94e27029baddf41ea6f4c246c9d5d0d8ede5d');
-            const data = await res.json();
-            cookieHeader = data.cookie || "";
-        } catch (e) {
-            console.error("Failed to fetch primary cookie", e);
-        }
 
         let drmConfig = { clearKeys: {} };
-        if(kid && key) {
-            drmConfig.clearKeys[kid] = key;
-        }
+        if(kid && key) { drmConfig.clearKeys[kid] = key; }
 
         player.configure({ drm: drmConfig });
-
+        
+        // Setup simple Request Filters for JioTV
         player.getNetworkingEngine().registerRequestFilter((type, request) => {
             request.headers['Referer'] = 'https://www.jiotv.com/';
             request.headers['User-Agent'] = "plaYtv/7.1.5 (Linux;Android 13) ExoPlayerLib/2.11.6";
-            if(cookieHeader) request.headers['Cookie'] = cookieHeader;
-
-            if ((type === shaka.net.NetworkingEngine.RequestType.MANIFEST || type === shaka.net.NetworkingEngine.RequestType.SEGMENT) && request.uris[0] && !request.uris[0].includes('__hdnea=')) {
-                let urlCookie = cookieHeader.startsWith('__hdnea__=') ? cookieHeader.substring(10) : cookieHeader;
-                const sep = request.uris[0].includes('?') ? '&' : '?';
-                request.uris[0] += sep + "__hdnea__=" + urlCookie;
-            }
-        });
-
-        player.addEventListener('error', (event) => {
-             console.error('Error code', event.detail.code, 'object', event.detail);
         });
 
         try {
             await player.load(streamUrl);
             video.play();
-        } catch (e) { console.error(e); }
+        } catch (e) { 
+            console.error("Player Error:", e); 
+        }
     });
   <\/script>
 </body>
